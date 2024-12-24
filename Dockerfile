@@ -62,8 +62,10 @@ ENV SERVICE_PORT=${DEFAULT_SERVICE_PORT} \
     TS_USERSPACE=true \
     TS_EXTRA_ARGS="" \
     TS_TAILSCALED_EXTRA_ARGS=""
-    
+
 # Add documentation about configuration options
+LABEL maintainer="HHF Technology <discourse@hhf.technology>"
+LABEL version="1.0"
 LABEL org.opencontainers.image.description="Secure service proxy with Cloudflare and Tailscale support" \
       org.opencontainers.image.documentation="Configuration Options:\n\
       SERVICE_PORT: The port your application listens on (default: 8080)\n\
