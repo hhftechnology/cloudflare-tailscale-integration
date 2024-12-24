@@ -6,7 +6,6 @@ ARG INSTALL_CLOUDFLARE=true
 ARG INSTALL_TAILSCALE=true
 
 # Build arguments for default configuration
-# These can be overridden at runtime
 ARG DEFAULT_SERVICE_PORT=8080
 ARG DEFAULT_SERVICE_PROTOCOL=http
 ARG DEFAULT_HOSTNAME=secure-service
@@ -20,16 +19,18 @@ RUN apk add --no-cache \
     bash \
     jq
 
-# Install Tailscale if requested
+# Install Tailscale if requested - Modified installation approach
 RUN if [ "$INSTALL_TAILSCALE" = "true" ]; then \
-        apk add --no-cache iptables ip6tables && \
-        curl -fsSL https://tailscale.com/install.sh | sh; \
+    # Add required packages
+    apk add --no-cache iptables ip6tables tailscale && \
+    # Create directories needed by tailscale
+    mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale; \
     fi
 
 # Install Cloudflared if requested
 RUN if [ "$INSTALL_CLOUDFLARE" = "true" ]; then \
-        wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared && \
-        chmod +x /usr/local/bin/cloudflared; \
+    wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared; \
     fi
 
 # Create necessary directories
