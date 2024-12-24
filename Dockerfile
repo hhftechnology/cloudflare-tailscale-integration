@@ -1,5 +1,5 @@
 # Dockerfile
-FROM alpine:3.18
+FROM hhftechnology/alpine:3.18
 
 # Build arguments for installation options
 ARG INSTALL_CLOUDFLARE=true
