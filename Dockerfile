@@ -1,78 +1,54 @@
 # Dockerfile
-FROM hhftechnology/alpine:3.18
-
-# Build arguments for installation options
-ARG INSTALL_CLOUDFLARE=true
-ARG INSTALL_TAILSCALE=true
-
-# Build arguments for default configuration
-ARG DEFAULT_SERVICE_PORT=8080
-ARG DEFAULT_SERVICE_PROTOCOL=http
-ARG DEFAULT_HOSTNAME=secure-service
+FROM hhftechnology/alpine:3.21
+# Build arguments
+ARG CLOUDFLARED_VERSION=2024.12.2
+ARG TAILSCALE_VERSION=1.76.6
+ARG TARGETARCH
 
 # Install base packages
 RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    curl \
-    supervisor \
     bash \
-    jq
+    ca-certificates \
+    curl \
+    iptables \
+    iproute2 \
+    supervisor \
+    linux-headers \
+    build-base \
+    kmod
 
-# Install Tailscale if requested - Modified installation approach
-RUN if [ "$INSTALL_TAILSCALE" = "true" ]; then \
-    # Add required packages
-    apk add --no-cache iptables ip6tables tailscale && \
-    # Create directories needed by tailscale
-    mkdir -p /var/run/tailscale /var/cache/tailscale /var/lib/tailscale; \
-    fi
+# Install Tailscale
+RUN curl -sL "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_${TARGETARCH}.tgz" \
+    | tar -zxf - -C /usr/local/bin --strip=1 \
+    tailscale_${TAILSCALE_VERSION}_${TARGETARCH}/tailscaled \
+    tailscale_${TAILSCALE_VERSION}_${TARGETARCH}/tailscale
 
-# Install Cloudflared if requested
-RUN if [ "$INSTALL_CLOUDFLARE" = "true" ]; then \
-    wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared && \
-    chmod +x /usr/local/bin/cloudflared; \
-    fi
+# Install Cloudflared
+RUN curl -sL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${TARGETARCH}" \
+    -o /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared
 
 # Create necessary directories
-RUN mkdir -p /scripts /var/log/supervisor && \
-    if [ "$INSTALL_CLOUDFLARE" = "true" ]; then mkdir -p /etc/cloudflared; fi
+RUN mkdir -p \
+    /var/run/tailscale \
+    /var/lib/tailscale \
+    /var/log/supervisor \
+    /etc/cloudflared
 
-# Copy scripts and set permissions
-COPY scripts/entrypoint.sh /scripts/entrypoint.sh
-COPY scripts/setup.py /scripts/setup.py
-RUN chmod +x /scripts/entrypoint.sh /scripts/setup.py
+# Copy configuration and scripts
+COPY config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY scripts/entrypoint.sh /entrypoint.sh
+COPY scripts/tailscale-up.sh /usr/local/bin/tailscale-up.sh
+COPY scripts/cloudflared-up.sh /usr/local/bin/cloudflared-up.sh
 
-# Copy service-specific configs
-COPY config/cloudflared.yml /etc/cloudflared/config.yml
+# Set execute permissions for scripts
+RUN chmod +x \
+    /entrypoint.sh \
+    /usr/local/bin/tailscale-up.sh \
+    /usr/local/bin/cloudflared-up.sh
 
-# Set default environment variables that can be overridden at runtime
-ENV SERVICE_PORT=${DEFAULT_SERVICE_PORT} \
-    SERVICE_PROTOCOL=${DEFAULT_SERVICE_PROTOCOL} \
-    HOSTNAME=${DEFAULT_HOSTNAME} \
-    ENABLE_CLOUDFLARE="false" \
-    ENABLE_TAILSCALE="false" \
-    TS_ACCEPT_DNS=false \
-    TS_AUTH_ONCE=false \
-    TS_DEST_IP="" \
-    TS_HOSTNAME=${HOSTNAME} \
-    TS_OUTBOUND_HTTP_PROXY_LISTEN="" \
-    TS_ROUTES="" \
-    TS_SOCKET="/var/run/tailscale/tailscaled.sock" \
-    TS_SOCKS5_SERVER="" \
-    TS_STATE_DIR="/var/lib/tailscale" \
-    TS_USERSPACE=true \
-    TS_EXTRA_ARGS="" \
-    TS_TAILSCALED_EXTRA_ARGS=""
+# Set environment variables
+ENV TUNNEL_ORIGIN_CERT=/etc/cloudflared/cert.pem \
+    NO_AUTOUPDATE=true
 
-# Add documentation about configuration options
-LABEL maintainer="HHF Technology <discourse@hhf.technology>"
-LABEL version="1.0"
-LABEL org.opencontainers.image.description="Secure service proxy with Cloudflare and Tailscale support" \
-      org.opencontainers.image.documentation="Configuration Options:\n\
-      SERVICE_PORT: The port your application listens on (default: 8080)\n\
-      SERVICE_PROTOCOL: Protocol for your service (http, https, tcp, udp)\n\
-      HOSTNAME: Service hostname for DNS\n\
-      ENABLE_CLOUDFLARE: Set to 'true' to enable Cloudflare tunnel\n\
-      ENABLE_TAILSCALE: Set to 'true' to enable Tailscale VPN"
-
-ENTRYPOINT ["/scripts/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]
